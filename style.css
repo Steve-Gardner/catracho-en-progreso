@@ -178,8 +178,8 @@ label.slang input { width: 24px; height: 24px; margin: 0; accent-color: var(--bl
 .hud button { white-space: nowrap; }
 
 /* ---- Tarjetas de estudio ---- */
-.cardsrow { justify-content: center; }
-#btn-cards { width: 100%; max-width: 420px; }
+.cardsrow { justify-content: center; margin-top: 14px; }
+#btn-cards { width: 100%; max-width: 420px; margin: 0 auto; }
 #cards { position: fixed; inset: 0; z-index: 12; background: rgba(5, 25, 60, .85); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 16px; }
 #cards[hidden] { display: none !important; }
 .cclose { position: absolute; top: 16px; right: 16px; }
