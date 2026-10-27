@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0073cf">
+<title>Catracho en Progreso</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+      <div class="titles"><h1>Catracho en Progreso</h1><span class="tagline">Hable más. Aprenda más.</span></div>
+    </div>
+  <nav>
+    <button data-view="home" class="active">Jugar</button>
+    <button data-view="portal">Portal de palabras</button>
+    <button data-view="settings">Ajustes</button>
+  </nav>
+</header>
+
+<main>
+  <!-- INICIO -->
+  <section id="view-home" class="view">
+    <div class="hero">
+      <div class="hero-flag"><svg class="hmap" viewBox="0 0 410 200" aria-label="Mapa de Honduras">
+        <path d="M402 77 L382 58 L332 27 L289 17 L233 16 L196 25 L146 22 L106 24 L88 32 L72 51 L44 58 L29 73 L19 82 L19 112 L41 120 L72 140 L103 146 L118 148 L122 175 L140 197 L150 200 L177 154 L208 152 L246 139 L277 126 L308 95 L339 86 L376 79Z" fill="#fff" stroke="#ffc42e" stroke-width="4" stroke-linejoin="round"/>
+        <path d="M402 77 L382 58 L332 27 L289 17 L233 16 L196 25 L146 22 L106 24 L88 32 L72 51 L44 58 L29 73 L19 82 L19 112 L41 120 L72 140 L103 146 L118 148 L122 175 L140 197 L150 200 L177 154 L208 152 L246 139 L277 126 L308 95 L339 86 L376 79Z" fill="#0073cf" opacity=".12"/>
+        <polygon points="101.1,36.2 103.3,42.3 109.7,42.4 104.6,46.3 106.4,52.5 101.1,48.8 95.8,52.5 97.7,46.3 92.6,42.4 99.0,42.3" fill="#ffc42e" stroke="#073b82" stroke-width="1.6" stroke-linejoin="round"/>
+        <text x="114" y="55" font-size="28" font-weight="800" fill="#073b82" font-family="system-ui,sans-serif">San Pedro Sula</text>
+      </svg></div>
+      <div class="hero-text">
+        <h2>¡Bienvenido, Élder Gardner!</h2>
+        <p>Diga las palabras en voz alta antes de que toquen el suelo. 🦜</p>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Nueva ronda</h2>
+      <div class="row wrap">
+        <label>Dirección
+          <select id="h-dir">
+            <option value="mix">Mezclado (inglés y español)</option>
+            <option value="en-es">Cae inglés → digo español</option>
+            <option value="es-en">Cae español → digo inglés</option>
+          </select>
+        </label>
+        <label>Tema
+          <select id="h-topic"></select>
+        </label>
+        <label class="check"><input type="checkbox" id="h-slang"> Modismos hondureños</label>
+        <button id="btn-start" class="primary big">▶ Empezar</button>
+      </div>
+      <p id="mic-note" class="muted"></p>
+      <div class="row">
+        <button id="btn-mictest">🎤 Probar micrófono</button>
+        <span id="heard-home" class="heard"></span>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Su progreso</h2>
+      <div id="home-stats" class="stats"></div>
+      <h3>Por tema</h3>
+      <div id="topic-bars"></div>
+    </div>
+  </section>
+
+  <!-- JUEGO -->
+  <section id="view-game" class="view" hidden>
+    <div class="hud">
+      <span class="chip">⭐ <b id="g-score">0</b></span>
+      <span class="chip lives"><b id="g-lives"></b></span>
+      <span class="chip">🔥 <b id="g-streak">0</b></span>
+      <span class="chip">Nivel <b id="g-level">1</b></span>
+      <span class="lifebar" title="Próxima vida extra">❤️<span class="track"><i id="g-lifebar"></i></span></span>
+      <span class="grow"></span>
+      <button id="btn-pause">⏸ Pausa</button>
+      <button id="btn-end">Terminar</button>
+    </div>
+    <div id="arena">
+      <div class="scenery" id="scenery"></div>
+      <div class="ground"></div>
+      <div id="reveal"></div><div id="toast"></div>
+    </div>
+    <div class="row inputbar">
+      <span id="mic-dot" class="dot"></span>
+      <span id="heard" class="heard">Diga la traducción en voz alta…</span>
+      <form id="type-form">
+        <input id="type-input" autocomplete="off" placeholder="o escríbala aquí">
+        <button>Enviar</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- PORTAL -->
+  <section id="view-portal" class="view" hidden>
+    <div class="card">
+      <div class="tabs">
+        <button data-kind="words" class="active">Mi lista</button>
+        <button data-kind="surprise">Banco sorpresa</button>
+      </div>
+      <form id="word-form" class="row wrap">
+        <input id="f-es" placeholder="Español" required>
+        <input id="f-en" placeholder="Inglés (varias con /)" required>
+        <input id="f-ex" placeholder="Frase de ejemplo (opcional)" class="wide">
+        <input id="f-topic" list="topic-list" placeholder="Tema">
+        <datalist id="topic-list"></datalist>
+        <label class="check"><input type="checkbox" id="f-reg"> Hondureña</label>
+        <button class="primary" id="f-save">Agregar</button>
+        <button type="button" id="f-cancel" hidden>Cancelar</button>
+      </form>
+    </div>
+    <div class="card">
+      <div id="portal-stats" class="stats"></div>
+      <div class="row wrap">
+        <input id="q" placeholder="Buscar…">
+        <select id="q-topic"></select>
+        <select id="q-filter">
+          <option value="">Todas</option>
+          <option value="hard">Difíciles</option>
+          <option value="mastered">Dominadas</option>
+          <option value="regional">Hondureñas</option>
+        </select>
+        <span id="count" class="muted"></span>
+      </div>
+      <div class="tablewrap"><table id="tbl"></table></div>
+    </div>
+  </section>
+
+  <!-- AJUSTES -->
+  <section id="view-settings" class="view" hidden>
+    <div class="card">
+      <h2>Ajustes</h2>
+      <div class="grid">
+        <label>¿Quién agrega palabras?
+          <input id="s-user" placeholder="Misionero / Papá">
+        </label>
+        <label>Tolerancia de pronunciación: <b id="s-tol-v"></b>
+          <input type="range" id="s-tol" min="50" max="95" step="5">
+          <small>Más bajo = acepta más aproximaciones.</small>
+        </label>
+        <label>Palabra sorpresa: una de cada
+          <input type="number" id="s-sur" min="2" max="20">
+        </label>
+        <label>Vidas por ronda
+          <input type="number" id="s-lives" min="1" max="10">
+        </label>
+        <label>Vida extra cada (puntos)
+          <input type="number" id="s-life" min="20" step="10">
+        </label>
+        <label>Español del reconocimiento
+          <select id="s-es">
+            <option value="es-HN">Honduras (es-HN)</option>
+            <option value="es-MX">México (es-MX)</option>
+            <option value="es-US">Estados Unidos (es-US)</option>
+            <option value="es-ES">España (es-ES)</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" id="s-speak"> Pronunciar la palabra en español al fallar</label>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Compartir y respaldo</h2>
+      <p class="muted">Para compartir vocabulario entre dos computadoras: uno exporta un archivo y el otro lo importa (combinar no borra nada).</p>
+      <div class="row wrap">
+        <button id="btn-export">⬇ Exportar palabras</button>
+        <button id="btn-import-merge">⬆ Importar (combinar)</button>
+        <button id="btn-import-replace">⬆ Importar (reemplazar todo)</button>
+        <input type="file" id="file-import" accept="application/json" hidden>
+      </div>
+      <div class="row wrap">
+        <button id="btn-reset-progress">Reiniciar progreso</button>
+        <button id="btn-reset-all" class="danger">Restaurar vocabulario inicial</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="overlay" hidden><div class="modal" id="modal"></div></div>
+
+<script src="words.js"></script>
+<script src="words2.js"></script>
+<script src="scenes.js"></script>
+<script src="app.js"></script>
+<script>if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});</script>
+</body>
+</html>
