@@ -25,14 +25,14 @@ const mkWord = (es, en, topic, ex = '', regional = false, by = '') =>
 
 function seed() {
   return {
-    v: 3,
+    v: 4,
     words: [
       ...SEED_WORDS.map(w => mkWord(w[0], w[1], w[2], w[3], w[4], 'inicial')),
       ...SEED_EXTRA.map(w => mkWord(w[0], w[1], w[2], w[3], false, 'inicial')),
       ...SEED_MORE.map(w => mkWord(w[0], w[1], w[2], w[3], false, 'inicial')),
     ].filter((w, i, a) => a.findIndex(x => norm(x.es) === norm(w.es)) === i),
     surprise: SEED_SURPRISE.map(s => ({ id: uid(), es: s[0], en: s[1], ex: s[2], note: s[3] })),
-    settings: { user: 'Misionero', dir: 'mix', slang: true, tol: 0.75, surpriseEvery: 5, lives: 5, lifeEvery: 150, esLang: 'es-HN', speak: true },
+    settings: { user: 'Misionero', dir: 'mix', slang: false, tol: 0.75, surpriseEvery: 5, lives: 5, lifeEvery: 150, esLang: 'es-HN', speak: true },
     stats: { sessions: [] },
   };
 }
@@ -41,7 +41,7 @@ function load() {
     const r = JSON.parse(localStorage.getItem(KEY));
     if (r && r.words) {
       const d = seed(), db2 = { ...d, ...r, settings: { ...d.settings, ...r.settings } };
-      if (!r.v || r.v < 3) migrate(db2, d, r.v || 0);
+      if (!r.v || r.v < 4) migrate(db2, d, r.v || 0);
       return db2;
     }
   } catch (e) { /* datos dañados: se parte de cero */ }
@@ -60,7 +60,8 @@ function migrate(cur, fresh, oldV) {
   const hs = new Set(cur.surprise.map(s => norm(s.es)));
   fresh.surprise.forEach(s => { if (!hs.has(norm(s.es))) cur.surprise.push(s); });
   if (oldV < 2) cur.settings.dir = 'mix';
-  cur.v = 3;
+  if (oldV < 4) cur.settings.slang = false;
+  cur.v = 4;
 }
 let db = load();
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { /* sin almacenamiento */ } };
@@ -197,8 +198,8 @@ function renderHome() {
   topicOptions($('#h-topic'), true, 'Todos los temas');
   $('#h-dir').value = db.settings.dir; $('#h-slang').checked = db.settings.slang;
   $('#mic-note').textContent = SR
-    ? 'Se recomienda Chrome. Al empezar, el navegador le pedirá permiso para usar el micrófono.'
-    : '⚠ Este navegador no tiene reconocimiento de voz. Use Chrome, o juegue escribiendo las respuestas.';
+    ? 'Al empezar, el navegador le pedirá permiso para usar el micrófono.'
+    : '⚠ Este navegador no tiene reconocimiento de voz. Juegue escribiendo las respuestas.';
   const W = db.words, today = new Date().toDateString();
   const secs = db.stats.sessions.filter(s => new Date(s.date).toDateString() === today).reduce((a, s) => a + s.seconds, 0);
   $('#home-stats').innerHTML =

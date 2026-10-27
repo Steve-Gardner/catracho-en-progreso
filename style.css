@@ -166,3 +166,9 @@ input, select { font-size: 16px; } /* evita el zoom automático en iPhone */
   label.check { flex: 1 1 100%; justify-content: flex-start; }
   label.check input { width: auto; }
 }
+label.slang .slangbox { display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 14px; background: #fff; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); font-size: 1.05rem; font-weight: 600; cursor: pointer; }
+label.slang input { width: 24px; height: 24px; margin: 0; accent-color: var(--blue-d); cursor: pointer; }
+@media (max-width: 600px) { label.slang { flex: 1 1 100%; } }
+.row.wrap label.slang input { flex: none; }
+.slangbox span, .slangbox { white-space: nowrap; }
+@media (max-width: 600px) { label.slang > span:first-child { display: none; } .slangbox { justify-content: flex-start; } }
