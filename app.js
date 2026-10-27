@@ -32,7 +32,7 @@ function seed() {
       ...SEED_MORE.map(w => mkWord(w[0], w[1], w[2], w[3], false, 'inicial')),
     ].filter((w, i, a) => a.findIndex(x => norm(x.es) === norm(w.es)) === i),
     surprise: SEED_SURPRISE.map(s => ({ id: uid(), es: s[0], en: s[1], ex: s[2], note: s[3] })),
-    settings: { user: 'Misionero', dir: 'mix', slang: false, tol: 0.75, surpriseEvery: 5, lives: 5, lifeEvery: 150, esLang: 'es-HN', speak: true },
+    settings: { user: 'Misionero', dir: 'mix', slang: false, challenge: false, tol: 0.75, surpriseEvery: 5, lives: 5, lifeEvery: 150, esLang: 'es-HN', speak: true },
     stats: { sessions: [] },
   };
 }
@@ -258,11 +258,11 @@ $('#btn-start').onclick = () => {
   db.settings.dir = $('#h-dir').value; db.settings.slang = $('#h-slang').checked; save();
   G = {
     dir: db.settings.dir, topic, lives: db.settings.lives, score: 0, streak: 0, correct: 0, wrong: 0,
-    items: [], retry: [], recent: [], lvl: 1, nextLife: db.settings.lifeEvery, cool: new Map(), slang: db.settings.slang, paused: false, last: performance.now(), spawnT: 0, play: 0,
+    items: [], retry: [], recent: [], lvl: 1, nextLife: db.settings.lifeEvery, cool: new Map(), challenge: db.settings.challenge, slang: db.settings.slang, paused: false, last: performance.now(), spawnT: 0, play: 0,
     newWords: new Set(), missed: new Map(), surpriseHit: [], surpriseMiss: [],
   };
   micStop(); onSpeech = handleSpeech; setHeard('Diga la traducción en voz alta…');
-  show('game'); setScene(1); updateHud(); $('#arena').querySelectorAll('.fall').forEach(e => e.remove());
+  show('game'); setScene(1); updateHud(); applyChallenge(); $('#arena').querySelectorAll('.fall').forEach(e => e.remove());
   if (SR) micOn(G.dir === 'en-es' ? db.settings.esLang : 'en-US');
   requestAnimationFrame(t => { G.last = t; frame(t); });
 };
@@ -320,8 +320,10 @@ function spawn() {
   });
   if (clickable) {
     const it = G.items[G.items.length - 1];
-    el.title = 'Clic para ver la traducción';
+    if (!G.challenge) el.title = 'Clic para ver la traducción';
+    if (G.challenge) el.classList.remove('clickable');
     el.onclick = () => {
+      if (G.challenge) return;
       it.hinted = true; el.classList.add('hinted');
       const ans = dir === 'es-en' ? base.en : base.es;
       el.textContent = `${entry.surprise ? '⭐ ' : ''}${prompt} = ${ans}`;
@@ -391,11 +393,15 @@ function burst(it, good) {
 function hit(it) {
   burst(it, true);
   removeItem(it, 'boom');
+  if (it.hinted) { // vio la traducción: sin puntos, sin racha, sin avance de dominio
+    toast('Sin puntos: vio la traducción');
+    if (!it.surprise) G.retry.push({ word: it.base, in: 3 });
+    micFlush(); return;
+  }
   G.correct++; G.streak++;
-  const bonus = it.hinted ? 0 : Math.min(G.streak, 10) + (it.surprise ? 20 : 0);
-  const pts = it.hinted ? 5 : 10 + bonus;
+  const pts = 10 + Math.min(G.streak, 10) + (it.surprise ? 20 : 0);
   G.score += pts;
-  let msg = it.surprise && !it.hinted ? `⭐ ¡Palabra sorpresa! +${pts}` : `+${pts}`;
+  let msg = it.surprise ? `⭐ ¡Palabra sorpresa! +${pts}` : `+${pts}`;
   while (G.score >= G.nextLife) {
     G.nextLife += db.settings.lifeEvery;
     if (G.lives < 9) { G.lives++; msg += '  ❤️ ¡Vida extra!'; }
@@ -408,7 +414,7 @@ function hit(it) {
   if (it.surprise) G.surpriseHit.push(it.base);
   else {
     if (it.base.seen === 0) G.newWords.add(it.base.id);
-    if (!it.hinted) { srsUpdate(it.base, true); G.cool.set(it.base.id, it.base.box >= 2 ? 9999 : 25); } // 2-3 aciertos: al fondo de la fila
+    srsUpdate(it.base, true); G.cool.set(it.base.id, it.base.box >= 2 ? 9999 : 25); // 2-3 aciertos: al fondo de la fila
   }
   updateHud(); micFlush();
 }
@@ -459,7 +465,21 @@ function pauseGame(p) {
   $('#btn-pause').textContent = p ? '▶ Seguir' : '⏸ Pausa';
   if (!p) { G.last = performance.now(); cancelAnimationFrame(G.raf); G.raf = requestAnimationFrame(frame); }
 }
-$('#btn-pause').onclick = () => pauseGame(!G.paused);
+function applyChallenge() {
+  const on = !!(G && G.challenge), b = $('#btn-challenge');
+  b.textContent = on ? 'Reto: sí' : 'Reto: no'; b.classList.toggle('on', on);
+  b.title = 'Modo reto: sin pausa y sin ver traducciones';
+  $('#btn-pause').disabled = on;
+  $('#arena').classList.toggle('challenge', on);
+  if (G) G.items.forEach(i => { i.el.classList.toggle('clickable', !on); i.el.title = on ? '' : 'Clic para ver la traducción'; });
+}
+$('#btn-challenge').onclick = () => {
+  if (!G) return;
+  G.challenge = !G.challenge; db.settings.challenge = G.challenge; save();
+  if (G.challenge && G.paused && !G.locked) pauseGame(false);
+  applyChallenge();
+};
+$('#btn-pause').onclick = () => { if (G && !G.challenge) pauseGame(!G.paused); };
 $('#btn-end').onclick = () => endGame();
 document.addEventListener('visibilitychange', () => { if (document.hidden && G && !G.paused) pauseGame(true); });
 

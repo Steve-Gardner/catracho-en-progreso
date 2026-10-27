@@ -172,3 +172,7 @@ label.slang input { width: 24px; height: 24px; margin: 0; accent-color: var(--bl
 .row.wrap label.slang input { flex: none; }
 .slangbox span, .slangbox { white-space: nowrap; }
 @media (max-width: 600px) { label.slang > span:first-child { display: none; } .slangbox { justify-content: flex-start; } }
+#btn-challenge.on { background: var(--bad); color: #fff; border-color: var(--bad); font-weight: 700; }
+#btn-pause:disabled { opacity: .4; cursor: not-allowed; }
+#arena.challenge { border-color: var(--bad); }
+.hud button { white-space: nowrap; }
