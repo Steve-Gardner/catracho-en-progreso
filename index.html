@@ -93,6 +93,7 @@
         <button>Enviar</button>
       </form>
     </div>
+    <div class="row cardsrow"><button id="btn-cards" class="big">Tarjetas de estudio (0)</button></div>
   </section>
 
   <!-- PORTAL -->
@@ -179,6 +180,17 @@
   </section>
 </main>
 
+<div id="cards" hidden>
+  <button id="c-close" class="cclose">Cerrar</button>
+  <div class="cwrap">
+    <button id="c-prev" class="arrow" aria-label="Anterior">&#8249;</button>
+    <div id="c-card" class="card3d" tabindex="0" role="button" aria-label="Voltear la tarjeta">
+      <div class="face front" id="c-front"></div><div class="face back" id="c-back"></div>
+    </div>
+    <button id="c-next" class="arrow" aria-label="Siguiente">&#8250;</button>
+  </div>
+  <div class="chint"><span id="c-count"></span> · Toque la tarjeta para voltearla</div>
+</div>
 <div id="overlay" hidden><div class="modal" id="modal"></div></div>
 
 <script src="words.js"></script>

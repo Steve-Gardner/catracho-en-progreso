@@ -276,10 +276,10 @@ $('#btn-start').onclick = () => {
   G = {
     dir: db.settings.dir, topic, lives: db.settings.lives, score: 0, streak: 0, correct: 0, wrong: 0,
     items: [], retry: [], recent: [], lvl: 1, nextLife: db.settings.lifeEvery, cool: new Map(), challenge: db.settings.challenge, slang: db.settings.slang, paused: false, last: performance.now(), spawnT: 0, play: 0,
-    newWords: new Set(), missed: new Map(), surpriseHit: [], surpriseMiss: [],
+    deck: new Map(), struggle: new Set(), newWords: new Set(), missed: new Map(), surpriseHit: [], surpriseMiss: [],
   };
   micStop(); onSpeech = handleSpeech; setHeard('Diga la traducción en voz alta…');
-  show('game'); setScene(1); updateHud(); applyChallenge(); $('#arena').querySelectorAll('.fall').forEach(e => e.remove());
+  show('game'); setScene(1); updateHud(); applyChallenge(); updateCardsBtn(); $('#arena').querySelectorAll('.fall').forEach(e => e.remove());
   if (SR) micOn(G.dir === 'en-es' ? db.settings.esLang : 'en-US');
   requestAnimationFrame(t => { G.last = t; frame(t); });
 };
@@ -346,13 +346,15 @@ function spawn() {
     if (G.challenge) el.classList.remove('clickable');
     el.onclick = () => {
       if (G.challenge) return;
-      it.hinted = true; el.classList.add('hinted');
+      it.hinted = true; G.struggle.add(base.id); el.classList.add('hinted');
       const ans = dir === 'es-en' ? base.en : base.es;
       el.textContent = `${entry.surprise ? '⭐ ' : ''}${prompt} = ${ans}`;
       place(it);
     };
   }
   place(G.items[G.items.length - 1]);
+  if (!G.deck.has(base.id)) G.deck.set(base.id, { es: base.es, en: base.en, ex: base.ex || '', front: dir === 'en-es' ? 'en' : 'es' });
+  updateCardsBtn();
   if (entry.word) { G.recent.push(base.id); if (G.recent.length > 5) G.recent.shift(); }
   syncMicLang();
 }
@@ -454,7 +456,7 @@ function miss(it) {
   }
   if (P(it.base, it.dir).seen === 0) G.newWords.add(it.base.id);
   srsUpdate(it.base, it.dir, false);
-  G.missed.set(it.base.id, it.base);
+  G.missed.set(it.base.id, it.base); G.struggle.add(it.base.id);
   scheduleRetry(it.base, it.dir);
   reveal(it);
   if (db.settings.speak) speak(it.base.es);
@@ -487,11 +489,55 @@ function pauseGame(p) {
   $('#btn-pause').textContent = p ? '▶ Seguir' : '⏸ Pausa';
   if (!p) { G.last = performance.now(); cancelAnimationFrame(G.raf); G.raf = requestAnimationFrame(frame); }
 }
+/* ---------- Tarjetas de estudio ---------- */
+let cards = [], cardI = 0, cardsPaused = false;
+function updateCardsBtn() {
+  const b = $('#btn-cards'); if (!b) return;
+  const n = G ? G.deck.size : 0;
+  b.textContent = `Tarjetas de estudio (${n})`;
+  b.disabled = !n || !!(G && G.challenge);
+  b.title = G && G.challenge ? 'No disponible en el modo reto' : '';
+}
+function showCard() {
+  const c = cards[cardI], el = $('#c-card');
+  el.classList.remove('flipped');
+  const f = c.front, b = f === 'es' ? 'en' : 'es';
+  $('#c-front').innerHTML = `<small>${f === 'es' ? 'Español' : 'Inglés'}</small><b>${esc(c[f])}</b>`;
+  $('#c-back').innerHTML = `<small>${b === 'es' ? 'Español' : 'Inglés'}</small><b>${esc(c[b])}</b>${c.ex ? `<em>${esc(c.ex)}</em>` : ''}`;
+  $('#c-count').textContent = `${cardI + 1} / ${cards.length}`;
+}
+function moveCard(d) { if (!cards.length) return; cardI = (cardI + d + cards.length) % cards.length; showCard(); }
+function openCards() {
+  if (!G || !G.deck.size || G.challenge) return;
+  // las que costaron trabajo primero, luego el resto en el orden en que salieron
+  const all = [...G.deck.entries()];
+  cards = [...all.filter(([id]) => G.struggle.has(id)), ...all.filter(([id]) => !G.struggle.has(id))].map(e => e[1]);
+  cardI = 0; showCard();
+  cardsPaused = !G.paused && !G.locked; if (cardsPaused) pauseGame(true);
+  $('#cards').hidden = false; $('#c-card').focus();
+}
+function closeCards() {
+  $('#cards').hidden = true;
+  if (cardsPaused && G && !G.challenge) pauseGame(false);
+  cardsPaused = false;
+}
+$('#btn-cards').onclick = openCards;
+$('#c-close').onclick = closeCards;
+$('#c-prev').onclick = () => moveCard(-1);
+$('#c-next').onclick = () => moveCard(1);
+$('#c-card').onclick = () => $('#c-card').classList.toggle('flipped');
+document.addEventListener('keydown', e => {
+  if ($('#cards').hidden) return;
+  if (e.key === 'ArrowLeft') moveCard(-1);
+  else if (e.key === 'ArrowRight') moveCard(1);
+  else if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); $('#c-card').classList.toggle('flipped'); }
+  else if (e.key === 'Escape') closeCards();
+});
 function applyChallenge() {
   const on = !!(G && G.challenge), b = $('#btn-challenge');
   b.textContent = on ? 'Reto: sí' : 'Reto: no'; b.classList.toggle('on', on);
   b.title = 'Modo reto: sin pausa y sin ver traducciones';
-  $('#btn-pause').disabled = on;
+  $('#btn-pause').disabled = on; updateCardsBtn();
   $('#arena').classList.toggle('challenge', on);
   if (G) G.items.forEach(i => { i.el.classList.toggle('clickable', !on); i.el.title = on ? '' : 'Clic para ver la traducción'; });
 }

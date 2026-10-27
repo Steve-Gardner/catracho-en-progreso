@@ -176,3 +176,24 @@ label.slang input { width: 24px; height: 24px; margin: 0; accent-color: var(--bl
 #btn-pause:disabled { opacity: .4; cursor: not-allowed; }
 #arena.challenge { border-color: var(--bad); }
 .hud button { white-space: nowrap; }
+
+/* ---- Tarjetas de estudio ---- */
+.cardsrow { justify-content: center; }
+#btn-cards { width: 100%; max-width: 420px; }
+#cards { position: fixed; inset: 0; z-index: 12; background: rgba(5, 25, 60, .85); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 16px; }
+#cards[hidden] { display: none !important; }
+.cclose { position: absolute; top: 16px; right: 16px; }
+.cwrap { display: flex; align-items: center; gap: 16px; width: 100%; max-width: 900px; justify-content: center; }
+.arrow { flex: none; width: 84px; height: 84px; border-radius: 50%; border: 0; background: #fff; color: var(--blue-d); font-size: 3.6rem; line-height: 1; padding: 0 0 8px; cursor: pointer; box-shadow: 0 6px 16px rgba(0,0,0,.35); }
+.arrow:hover { background: var(--gold); }
+.card3d { flex: 1; max-width: 560px; height: min(50vh, 340px); perspective: 1200px; cursor: pointer; position: relative; outline: none; }
+.face { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 20px; border-radius: 24px; backface-visibility: hidden; transition: transform .45s; box-shadow: 0 14px 34px rgba(0,0,0,.4); }
+.face small { font-size: .85rem; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; opacity: .65; }
+.face b { font-size: clamp(1.8rem, 6vw, 3rem); line-height: 1.15; overflow-wrap: anywhere; }
+.face em { font-size: 1.05rem; opacity: .8; }
+.face.front { background: linear-gradient(180deg, #fff, #e9f3ff); color: var(--blue-d); border-bottom: 8px solid #a9c8ef; }
+.face.back { background: linear-gradient(180deg, #fff7d6, var(--gold)); color: #4a3200; border-bottom: 8px solid #c98f00; transform: rotateY(180deg); }
+.card3d.flipped .front { transform: rotateY(180deg); }
+.card3d.flipped .back { transform: rotateY(360deg); }
+.chint { color: #fff; opacity: .85; }
+@media (max-width: 600px) { .arrow { width: 54px; height: 54px; font-size: 2.4rem; } .cwrap { gap: 8px; } }
