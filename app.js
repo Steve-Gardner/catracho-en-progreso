@@ -204,6 +204,7 @@ function topicOptions(sel, withAll, allLabel) {
 const statBox = (n, label) => `<div class="stat"><b>${n}</b>${label}</div>`;
 
 function renderHome() {
+  topUpGroup(db.settings.slang, '');
   topicOptions($('#h-topic'), true, 'Todos los temas');
   $('#h-dir').value = db.settings.dir; $('#h-slang').checked = db.settings.slang;
   $('#mic-note').textContent = SR
@@ -212,8 +213,9 @@ function renderHome() {
   const W = db.words, today = new Date().toDateString();
   const secs = db.stats.sessions.filter(s => new Date(s.date).toDateString() === today).reduce((a, s) => a + s.seconds, 0);
   $('#home-stats').innerHTML =
-    statBox(W.length, 'palabras') + DIRS.map(d => statBox(W.filter(w => masteredIn(w, d)).length, 'dominadas ' + DIRNAME[d])).join('') +
+    statBox(W.filter(isActive).length, 'en el grupo actual') + statBox(W.filter(isGrad).length, 'graduadas') + DIRS.map(d => statBox(W.filter(w => masteredIn(w, d)).length, 'dominadas ' + DIRNAME[d])).join('') +
     statBox(W.filter(isHard).length, 'difíciles') + statBox(Math.round(secs / 60) + ' min', 'practicados hoy');
+  updateCardsBtn();
   const topics = [...new Set(W.map(w => w.topic))];
   $('#topic-bars').innerHTML = topics.map(t => {
     const ws = W.filter(w => w.topic === t), m = DIRS.map(d => ws.filter(w => masteredIn(w, d)).length), pct = Math.round(50 * (m[0] + m[1]) / ws.length);
@@ -236,17 +238,58 @@ function weight(c) {
   if (s.bad > s.ok) x += 2;
   return x;
 }
+/* ---------- Grupo actual ---------- */
+// 40 palabras en las que se concentra el juego. Cuando una se domina (caja 3 en las dos
+// direcciones) pasa a "dominadas" y entra una nueva. Las dominadas vuelven de vez en cuando.
+const GROUP_SIZE = 40, GRAD_BOX = 3, REVIEW_ODDS = 12, TOPIC_MIN = 12;
+const TOPIC_ORDER = ['saludos', 'conversacion', 'misional', 'numeros', 'familia', 'comida', 'lugares', 'verbos', 'adjetivos', 'cuerpo', 'cosas', 'honduras'];
+const topicRank = t => { const i = TOPIC_ORDER.indexOf(t); return i < 0 ? 99 : i; };
+const isActive = w => w.st === 'act', isGrad = w => w.st === 'grad';
+const isUserWord = w => !!w.by && w.by !== 'inicial';
+// Activa n palabras nuevas: primero las que agregó él, luego un tema tras otro en rotación
+function activate(n, topic, slang) {
+  const cands = db.words.filter(w => !w.st && (!topic || w.topic === topic) && (slang || !w.regional));
+  let got = 0;
+  const take = w => { w.st = 'act'; got++; };
+  for (const w of cands) if (got < n && isUserWord(w)) take(w);
+  const topics = [...new Set(cands.map(w => w.topic))].sort((x, y) => topicRank(x) - topicRank(y));
+  const qs = topics.map(t => cands.filter(w => w.topic === t && !w.st));
+  while (got < n && qs.some(q => q.length))
+    for (const q of qs) { while (q.length && q[0].st) q.shift(); if (q.length && got < n) take(q.shift()); }
+  if (got) save();
+  return got;
+}
+function topUpGroup(slang, topic) {
+  const n = GROUP_SIZE - db.words.filter(isActive).length;
+  if (n > 0) activate(n, '', slang);
+  if (topic) { const m = TOPIC_MIN - db.words.filter(w => isActive(w) && w.topic === topic).length; if (m > 0) activate(m, topic, slang); }
+}
+function checkGrad(w) {
+  if (!isActive(w) || !DIRS.every(d => P(w, d).box >= GRAD_BOX)) return;
+  w.st = 'grad'; G.grads.push(w); save();
+  topUpGroup(G.slang, G.topic);
+}
+
 const ckey = (w, d) => w.id + '|' + d;
 function pickWord() {
   const used = new Set([...G.items.map(i => i.base.id), ...G.recent]);
   const dirs = G.dir === 'mix' ? DIRS : [G.dir];
+  const now = Date.now();
+  const src = db.words.filter(w => (!G.topic || w.topic === G.topic) && (G.slang || !w.regional) && !used.has(w.id));
+  // 1 de cada REVIEW_ODDS viene de las dominadas que ya les toca repasar
+  const review = Math.random() < 1 / REVIEW_ODDS;
   let pool = [];
-  for (const w of db.words)
-    if ((!G.topic || w.topic === G.topic) && (G.slang || !w.regional) && !used.has(w.id))
-      for (const d of dirs) pool.push({ w, d });
-  const fresh = pool.filter(c => !G.cool.has(ckey(c.w, c.d)) && (P(c.w, c.d).seen === 0 || P(c.w, c.d).due <= Date.now()));
+  if (review)
+    for (const w of src) if (isGrad(w)) for (const d of dirs) if (P(w, d).due <= now) pool.push({ w, d });
+  if (!pool.length)
+    for (const w of src) if (isActive(w)) for (const d of dirs) pool.push({ w, d });
+  const fresh = pool.filter(c => !G.cool.has(ckey(c.w, c.d)) && (P(c.w, c.d).seen === 0 || P(c.w, c.d).due <= now));
   if (fresh.length >= 6) pool = fresh; // palabras acertadas descansan un buen rato
-  else { const rested = pool.filter(c => !G.cool.has(ckey(c.w, c.d))); if (rested.length >= 4) pool = rested; }
+  else {
+    const rested = pool.filter(c => !G.cool.has(ckey(c.w, c.d)));
+    if (rested.length >= 4) pool = rested;
+    else if (activate(5, G.topic, G.slang)) return pickWord(); // el grupo se agotó en esta ronda: entran palabras nuevas
+  }
   if (!pool.length) return null;
   let r = Math.random() * pool.reduce((a, c) => a + weight(c), 0);
   for (const c of pool) { r -= weight(c); if (r <= 0) return c; }
@@ -273,10 +316,11 @@ $('#btn-start').onclick = () => {
   const pool = db.words.filter(w => (!topic || w.topic === topic) && (db.settings.slang || !w.regional));
   if (pool.length < 4) return alert('Se necesitan al menos 4 palabras en ese tema.');
   db.settings.dir = $('#h-dir').value; db.settings.slang = $('#h-slang').checked; save();
+  topUpGroup(db.settings.slang, topic);
   G = {
     dir: db.settings.dir, topic, lives: db.settings.lives, score: 0, streak: 0, correct: 0, wrong: 0,
     items: [], retry: [], recent: [], lvl: 1, nextLife: db.settings.lifeEvery, cool: new Map(), challenge: db.settings.challenge, slang: db.settings.slang, paused: false, last: performance.now(), spawnT: 0, play: 0,
-    deck: new Map(), struggle: new Set(), newWords: new Set(), missed: new Map(), surpriseHit: [], surpriseMiss: [],
+    grads: [], newWords: new Set(), missed: new Map(), surpriseHit: [], surpriseMiss: [],
   };
   micStop(); onSpeech = handleSpeech; setHeard('Diga la traducción en voz alta…');
   show('game'); setScene(1); updateHud(); applyChallenge(); updateCardsBtn(); $('#arena').querySelectorAll('.fall').forEach(e => e.remove());
@@ -346,15 +390,13 @@ function spawn() {
     if (G.challenge) el.classList.remove('clickable');
     el.onclick = () => {
       if (G.challenge) return;
-      it.hinted = true; G.struggle.add(base.id); el.classList.add('hinted');
+      it.hinted = true; el.classList.add('hinted');
       const ans = dir === 'es-en' ? base.en : base.es;
       el.textContent = `${entry.surprise ? '⭐ ' : ''}${prompt} = ${ans}`;
       place(it);
     };
   }
   place(G.items[G.items.length - 1]);
-  if (!G.deck.has(base.id)) G.deck.set(base.id, { es: base.es, en: base.en, ex: base.ex || '', front: dir === 'en-es' ? 'en' : 'es' });
-  updateCardsBtn();
   if (entry.word) { G.recent.push(base.id); if (G.recent.length > 5) G.recent.shift(); }
   syncMicLang();
 }
@@ -439,6 +481,7 @@ function hit(it) {
   else {
     if (P(it.base, it.dir).seen === 0) G.newWords.add(it.base.id);
     srsUpdate(it.base, it.dir, true); G.cool.set(ckey(it.base, it.dir), P(it.base, it.dir).box >= 2 ? 9999 : 25); // 2-3 aciertos: al fondo de la fila
+    checkGrad(it.base);
   }
   updateHud(); micFlush();
 }
@@ -456,7 +499,8 @@ function miss(it) {
   }
   if (P(it.base, it.dir).seen === 0) G.newWords.add(it.base.id);
   srsUpdate(it.base, it.dir, false);
-  G.missed.set(it.base.id, it.base); G.struggle.add(it.base.id);
+  if (isGrad(it.base)) { it.base.st = 'act'; save(); } // una dominada que se falla vuelve al grupo
+  G.missed.set(it.base.id, it.base);
   scheduleRetry(it.base, it.dir);
   reveal(it);
   if (db.settings.speak) speak(it.base.es);
@@ -491,29 +535,39 @@ function pauseGame(p) {
 }
 /* ---------- Tarjetas de estudio ---------- */
 let cards = [], cardI = 0, cardsPaused = false;
+// Las tarjetas salen del grupo actual (no de lo que cae): primero las difíciles, luego las de menor dominio
+function cardWords(topic, withGrad) {
+  const ws = db.words.filter(w => (isActive(w) || (withGrad && isGrad(w))) && (!topic || w.topic === topic));
+  const lo = w => Math.min(...DIRS.map(d => P(w, d).box));
+  ws.sort((x, y) => (isHard(y) - isHard(x)) || (isGrad(x) - isGrad(y)) || (lo(x) - lo(y)));
+  return ws.map(w => ({ es: w.es, en: w.en, ex: w.ex || '', front: P(w, 'en-es').box < P(w, 'es-en').box ? 'en' : 'es' }));
+}
+const cardsTopic = () => G ? G.topic : $('#h-topic').value;
 function updateCardsBtn() {
-  const b = $('#btn-cards'); if (!b) return;
-  const n = G ? G.deck.size : 0;
-  b.textContent = `Tarjetas de estudio (${n})`;
-  b.disabled = !n || !!(G && G.challenge);
-  b.title = G && G.challenge ? 'No disponible en el modo reto' : '';
+  const n = cardWords(cardsTopic(), false).length, lock = !!(G && G.challenge);
+  for (const b of [$('#btn-cards'), $('#btn-cards-home')]) {
+    if (!b) continue;
+    b.textContent = `Tarjetas de estudio (${n})`;
+    b.disabled = !n || lock;
+    b.title = lock ? 'No disponible en el modo reto' : '';
+  }
 }
 function showCard() {
   const c = cards[cardI], el = $('#c-card');
   el.classList.remove('flipped');
   const f = c.front, b = f === 'es' ? 'en' : 'es';
-  $('#c-front').innerHTML = `<small>${f === 'es' ? 'Español' : 'Inglés'}</small><b>${esc(c[f])}</b>`;
-  $('#c-back').innerHTML = `<small>${b === 'es' ? 'Español' : 'Inglés'}</small><b>${esc(c[b])}</b>${c.ex ? `<em>${esc(c.ex)}</em>` : ''}`;
+  const spk = `<button class="speak" data-say="${esc(c.es)}" title="Escuchar la pronunciación" aria-label="Escuchar en español">Escuchar</button>`;
+  $('#c-front').innerHTML = `<small>${f === 'es' ? 'Español' : 'Inglés'}</small><b>${esc(c[f])}</b>${f === 'es' ? spk : ''}`;
+  $('#c-back').innerHTML = `<small>${b === 'es' ? 'Español' : 'Inglés'}</small><b>${esc(c[b])}</b>${b === 'es' ? spk : ''}${c.ex ? `<em>${esc(c.ex)}</em>` : ''}`;
   $('#c-count').textContent = `${cardI + 1} / ${cards.length}`;
 }
 function moveCard(d) { if (!cards.length) return; cardI = (cardI + d + cards.length) % cards.length; showCard(); }
+function loadCards() { cards = cardWords(cardsTopic(), $('#c-grad').checked); cardI = 0; if (cards.length) showCard(); }
 function openCards() {
-  if (!G || !G.deck.size || G.challenge) return;
-  // las que costaron trabajo primero, luego el resto en el orden en que salieron
-  const all = [...G.deck.entries()];
-  cards = [...all.filter(([id]) => G.struggle.has(id)), ...all.filter(([id]) => !G.struggle.has(id))].map(e => e[1]);
-  cardI = 0; showCard();
-  cardsPaused = !G.paused && !G.locked; if (cardsPaused) pauseGame(true);
+  if (G && G.challenge) return;
+  $('#c-grad').checked = false; loadCards();
+  if (!cards.length) return;
+  cardsPaused = !!G && !G.paused && !G.locked; if (cardsPaused) pauseGame(true);
   $('#cards').hidden = false; $('#c-card').focus();
 }
 function closeCards() {
@@ -522,6 +576,14 @@ function closeCards() {
   cardsPaused = false;
 }
 $('#btn-cards').onclick = openCards;
+$('#btn-cards-home').onclick = openCards;
+$('#h-topic').onchange = updateCardsBtn;
+$('#c-grad').onchange = loadCards;
+// el botón de escuchar no voltea la tarjeta
+$('#cards').addEventListener('click', e => {
+  const s = e.target.closest('.speak'); if (!s) return;
+  e.stopPropagation(); speak(s.dataset.say, db.settings.esLang);
+}, true);
 $('#c-close').onclick = closeCards;
 $('#c-prev').onclick = () => moveCard(-1);
 $('#c-next').onclick = () => moveCard(1);
@@ -583,6 +645,8 @@ function endGame(silent) {
     <h3>Palabras nuevas vistas (${g.newWords.size})</h3>
     <h3>Palabras difíciles (${hard.length})</h3>
     <p>${hard.map(w => `${esc(w.es)} = ${esc(w.en)}`).join('<br>') || '—'}</p>
+    <h3>Pasaron a dominadas (${g.grads.length})</h3>
+    <p>${g.grads.map(w => `${esc(w.es)} = ${esc(w.en)}`).join('<br>') || '—'}</p>
     <h3>Palabras sorpresa</h3>
     <p>Acertadas: ${g.surpriseHit.map(s => esc(s.es)).join(', ') || '—'}<br>Falladas: ${g.surpriseMiss.map(s => esc(s.es)).join(', ') || '—'}</p>
     <div class="btns"><button id="m-ok" class="primary">Volver al inicio</button></div>`);
@@ -703,7 +767,7 @@ $('#file-import').onchange = async e => {
 };
 $('#btn-reset-progress').onclick = () => {
   if (!confirm('¿Reiniciar el progreso de todas las palabras?')) return;
-  db.words.forEach(w => { w.p = freshP(); }); db.stats.sessions = []; save();
+  db.words.forEach(w => { w.p = freshP(); delete w.st; }); db.stats.sessions = []; save();
 };
 $('#btn-reset-all').onclick = () => {
   if (!confirm('Se borrará todo y volverá el vocabulario inicial. ¿Continuar?')) return;
