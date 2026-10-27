@@ -250,6 +250,7 @@ function srsUpdate(w, ok) {
 /* ---------- Juego ---------- */
 let G = null;
 const ITEM_H = 64;
+const RETRY_SPACING = 4; // separación mínima entre dos palabras que regresan
 const RETRY_GAP = 9; // palabras que vuelven a salir después de fallar (en palabras nuevas)
 
 $('#btn-start').onclick = () => {
@@ -288,6 +289,12 @@ function updateHud() {
   $('#g-lifebar').style.width = Math.max(0, Math.min(100, 100 * (G.score - (G.nextLife - ev)) / ev)) + '%';
 }
 
+// Cada palabra fallada vuelve RETRY_GAP palabras después, y separada de las demás que están en espera
+function scheduleRetry(w) {
+  G.retry = G.retry.filter(r => r.word.id !== w.id);
+  const gap = Math.max(RETRY_GAP, ...G.retry.map(r => r.in + RETRY_SPACING));
+  G.retry.push({ word: w, in: gap }); G.cool.set(w.id, gap);
+}
 function nextEntry() {
   G.retry.forEach(r => r.in--);
   for (const [id, n] of G.cool) { if (n <= 1) G.cool.delete(id); else G.cool.set(id, n - 1); }
@@ -396,7 +403,7 @@ function hit(it) {
   removeItem(it, 'boom');
   if (it.hinted) { // vio la traducción: sin puntos, sin racha, sin avance de dominio
     toast('Sin puntos: vio la traducción');
-    if (!it.surprise) { G.retry.push({ word: it.base, in: RETRY_GAP }); G.cool.set(it.base.id, RETRY_GAP); }
+    if (!it.surprise) scheduleRetry(it.base);
     micFlush(); return;
   }
   G.correct++; G.streak++;
@@ -434,7 +441,7 @@ function miss(it) {
   if (it.base.seen === 0) G.newWords.add(it.base.id);
   srsUpdate(it.base, false);
   G.missed.set(it.base.id, it.base);
-  G.retry.push({ word: it.base, in: RETRY_GAP }); G.cool.set(it.base.id, RETRY_GAP);
+  scheduleRetry(it.base);
   reveal(it);
   if (db.settings.speak) speak(it.base.es);
   if (G.lives <= 0) endGame();
