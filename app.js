@@ -250,6 +250,7 @@ function srsUpdate(w, ok) {
 /* ---------- Juego ---------- */
 let G = null;
 const ITEM_H = 64;
+const RETRY_GAP = 9; // palabras que vuelven a salir después de fallar (en palabras nuevas)
 
 $('#btn-start').onclick = () => {
   const topic = $('#h-topic').value;
@@ -395,7 +396,7 @@ function hit(it) {
   removeItem(it, 'boom');
   if (it.hinted) { // vio la traducción: sin puntos, sin racha, sin avance de dominio
     toast('Sin puntos: vio la traducción');
-    if (!it.surprise) G.retry.push({ word: it.base, in: 3 });
+    if (!it.surprise) { G.retry.push({ word: it.base, in: RETRY_GAP }); G.cool.set(it.base.id, RETRY_GAP); }
     micFlush(); return;
   }
   G.correct++; G.streak++;
@@ -433,7 +434,7 @@ function miss(it) {
   if (it.base.seen === 0) G.newWords.add(it.base.id);
   srsUpdate(it.base, false);
   G.missed.set(it.base.id, it.base);
-  G.retry.push({ word: it.base, in: 3 });
+  G.retry.push({ word: it.base, in: RETRY_GAP }); G.cool.set(it.base.id, RETRY_GAP);
   reveal(it);
   if (db.settings.speak) speak(it.base.es);
   if (G.lives <= 0) endGame();
