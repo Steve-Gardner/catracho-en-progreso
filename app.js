@@ -20,12 +20,16 @@ const MIN = 60e3, DAY = 864e5;
 const INTERVALS = [0, 10 * MIN, 1 * DAY, 3 * DAY, 7 * DAY, 21 * DAY];
 
 /* ---------- Datos ---------- */
+const DIRS = ['es-en', 'en-es']; // el dominio se lleva por separado en cada dirección
+const freshState = () => ({ box: 0, due: 0, seen: 0, ok: 0, bad: 0 });
+const freshP = () => ({ 'es-en': freshState(), 'en-es': freshState() });
+const P = (w, d) => ((w.p = w.p || {})[d] = w.p[d] || freshState());
 const mkWord = (es, en, topic, ex = '', regional = false, by = '') =>
-  ({ id: uid(), es, en, topic, ex, regional: !!regional, by, box: 0, due: 0, seen: 0, ok: 0, bad: 0 });
+  ({ id: uid(), es, en, topic, ex, regional: !!regional, by, p: freshP() });
 
 function seed() {
   return {
-    v: 4,
+    v: 5,
     words: [
       ...SEED_WORDS.map(w => mkWord(w[0], w[1], w[2], w[3], w[4], 'inicial')),
       ...SEED_EXTRA.map(w => mkWord(w[0], w[1], w[2], w[3], false, 'inicial')),
@@ -41,7 +45,7 @@ function load() {
     const r = JSON.parse(localStorage.getItem(KEY));
     if (r && r.words) {
       const d = seed(), db2 = { ...d, ...r, settings: { ...d.settings, ...r.settings } };
-      if (!r.v || r.v < 4) migrate(db2, d, r.v || 0);
+      if (!r.v || r.v < 5) migrate(db2, d, r.v || 0);
       return db2;
     }
   } catch (e) { /* datos dañados: se parte de cero */ }
@@ -61,13 +65,18 @@ function migrate(cur, fresh, oldV) {
   fresh.surprise.forEach(s => { if (!hs.has(norm(s.es))) cur.surprise.push(s); });
   if (oldV < 2) cur.settings.dir = 'mix';
   if (oldV < 4) cur.settings.slang = false;
-  cur.v = 4;
+  if (oldV < 5) cur.words.forEach(w => { // el progreso antiguo mezclaba las dos direcciones: se reinicia
+    ['box', 'due', 'seen', 'ok', 'bad'].forEach(k => delete w[k]); w.p = freshP();
+  });
+  cur.v = 5;
 }
 let db = load();
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { /* sin almacenamiento */ } };
 
-const isHard = w => w.bad > 0 && w.box <= 1;
-const isMastered = w => w.box >= 4;
+const isHard = w => DIRS.some(d => P(w, d).bad > 0 && P(w, d).box <= 1);
+const masteredIn = (w, d) => P(w, d).box >= 4;
+const isMastered = w => DIRS.every(d => masteredIn(w, d));
+const DIRNAME = { 'es-en': 'ES→EN', 'en-es': 'EN→ES' };
 
 /* ---------- Texto y coincidencia aproximada ---------- */
 function norm(s) {
@@ -203,12 +212,12 @@ function renderHome() {
   const W = db.words, today = new Date().toDateString();
   const secs = db.stats.sessions.filter(s => new Date(s.date).toDateString() === today).reduce((a, s) => a + s.seconds, 0);
   $('#home-stats').innerHTML =
-    statBox(W.length, 'palabras') + statBox(W.filter(isMastered).length, 'dominadas') +
+    statBox(W.length, 'palabras') + DIRS.map(d => statBox(W.filter(w => masteredIn(w, d)).length, 'dominadas ' + DIRNAME[d])).join('') +
     statBox(W.filter(isHard).length, 'difíciles') + statBox(Math.round(secs / 60) + ' min', 'practicados hoy');
   const topics = [...new Set(W.map(w => w.topic))];
   $('#topic-bars').innerHTML = topics.map(t => {
-    const ws = W.filter(w => w.topic === t), m = ws.filter(isMastered).length, pct = Math.round(100 * m / ws.length);
-    return `<div class="bar"><span class="name">${esc(topicName(t))}</span><div class="track"><div class="fill" style="width:${pct}%"></div></div><span>${m}/${ws.length}</span></div>`;
+    const ws = W.filter(w => w.topic === t), m = DIRS.map(d => ws.filter(w => masteredIn(w, d)).length), pct = Math.round(50 * (m[0] + m[1]) / ws.length);
+    return `<div class="bar"><span class="name">${esc(topicName(t))}</span><div class="track"><div class="fill" style="width:${pct}%"></div></div><span title="ES→EN · EN→ES">${m[0]} · ${m[1]} / ${ws.length}</span></div>`;
   }).join('');
 }
 $('#btn-mictest').onclick = () => {
@@ -220,30 +229,36 @@ $('#btn-mictest').onclick = () => {
 };
 
 /* ---------- Selección de palabras (repetición espaciada) ---------- */
-function weight(w) {
-  const due = w.due <= Date.now();
+function weight(c) {
+  const s = P(c.w, c.d), due = s.due <= Date.now();
   let x = due ? 3 : 0.3;
-  if (w.seen === 0) x = 2.5;
-  if (w.bad > w.ok) x += 2;
+  if (s.seen === 0) x = 2.5;
+  if (s.bad > s.ok) x += 2;
   return x;
 }
+const ckey = (w, d) => w.id + '|' + d;
 function pickWord() {
   const used = new Set([...G.items.map(i => i.base.id), ...G.recent]);
-  let pool = db.words.filter(w => (!G.topic || w.topic === G.topic) && (G.slang || !w.regional) && !used.has(w.id));
-  const fresh = pool.filter(w => !G.cool.has(w.id) && (w.seen === 0 || w.due <= Date.now()));
+  const dirs = G.dir === 'mix' ? DIRS : [G.dir];
+  let pool = [];
+  for (const w of db.words)
+    if ((!G.topic || w.topic === G.topic) && (G.slang || !w.regional) && !used.has(w.id))
+      for (const d of dirs) pool.push({ w, d });
+  const fresh = pool.filter(c => !G.cool.has(ckey(c.w, c.d)) && (P(c.w, c.d).seen === 0 || P(c.w, c.d).due <= Date.now()));
   if (fresh.length >= 6) pool = fresh; // palabras acertadas descansan un buen rato
-  else { const rested = pool.filter(w => !G.cool.has(w.id)); if (rested.length >= 4) pool = rested; }
+  else { const rested = pool.filter(c => !G.cool.has(ckey(c.w, c.d))); if (rested.length >= 4) pool = rested; }
   if (!pool.length) return null;
-  let r = Math.random() * pool.reduce((a, w) => a + weight(w), 0);
-  for (const w of pool) { r -= weight(w); if (r <= 0) return w; }
+  let r = Math.random() * pool.reduce((a, c) => a + weight(c), 0);
+  for (const c of pool) { r -= weight(c); if (r <= 0) return c; }
   return pool[pool.length - 1];
 }
 const surpriseAvail = () => db.surprise.filter(s => !db.words.some(w => norm(w.es) === norm(s.es)));
 
-function srsUpdate(w, ok) {
-  w.seen++;
-  if (ok) { w.ok++; w.box = Math.min(5, w.box + 1); } else { w.bad++; w.box = Math.max(0, w.box - 2); }
-  w.due = Date.now() + INTERVALS[w.box];
+function srsUpdate(w, d, ok) {
+  const s = P(w, d);
+  s.seen++;
+  if (ok) { s.ok++; s.box = Math.min(5, s.box + 1); } else { s.bad++; s.box = Math.max(0, s.box - 2); }
+  s.due = Date.now() + INTERVALS[s.box];
   save();
 }
 
@@ -290,28 +305,27 @@ function updateHud() {
 }
 
 // Cada palabra fallada vuelve RETRY_GAP palabras después, y separada de las demás que están en espera
-function scheduleRetry(w) {
-  G.retry = G.retry.filter(r => r.word.id !== w.id);
+function scheduleRetry(w, d) {
+  G.retry = G.retry.filter(r => r.word.id !== w.id || r.dir !== d);
   const gap = Math.max(RETRY_GAP, ...G.retry.map(r => r.in + RETRY_SPACING));
-  G.retry.push({ word: w, in: gap }); G.cool.set(w.id, gap);
+  G.retry.push({ word: w, dir: d, in: gap }); G.cool.set(ckey(w, d), gap);
 }
 function nextEntry() {
   G.retry.forEach(r => r.in--);
   for (const [id, n] of G.cool) { if (n <= 1) G.cool.delete(id); else G.cool.set(id, n - 1); }
   const ri = G.retry.findIndex(r => r.in <= 0 && !G.items.some(i => i.base.id === r.word.id));
-  if (ri >= 0) return { word: G.retry.splice(ri, 1)[0].word };
+  if (ri >= 0) { const r = G.retry.splice(ri, 1)[0]; return { word: r.word, dir: r.dir }; }
   const bank = G.slang ? surpriseAvail() : [];
   if (bank.length && !G.items.some(i => i.surprise) && Math.random() < 1 / db.settings.surpriseEvery)
     return { surprise: rand(bank) };
-  const w = pickWord();
-  return w ? { word: w } : null;
+  const c = pickWord();
+  return c ? { word: c.w, dir: c.d } : null;
 }
 
 function spawn() {
   const entry = nextEntry(); if (!entry) return;
   const base = entry.word || entry.surprise;
-  let dir = G.dir === 'mix' ? rand(['es-en', 'en-es']) : G.dir;
-  if (entry.surprise) dir = 'es-en';
+  const dir = entry.surprise ? 'es-en' : entry.dir;
   const prompt = dir === 'es-en' ? base.es : base.en.split('/')[0].trim();
   const clickable = true; // cualquier palabra se puede tocar para ver la traducción
   const el = document.createElement('div');
@@ -403,7 +417,7 @@ function hit(it) {
   removeItem(it, 'boom');
   if (it.hinted) { // vio la traducción: sin puntos, sin racha, sin avance de dominio
     toast('Sin puntos: vio la traducción');
-    if (!it.surprise) scheduleRetry(it.base);
+    if (!it.surprise) scheduleRetry(it.base, it.dir);
     micFlush(); return;
   }
   G.correct++; G.streak++;
@@ -421,8 +435,8 @@ function hit(it) {
   toast(msg);
   if (it.surprise) G.surpriseHit.push(it.base);
   else {
-    if (it.base.seen === 0) G.newWords.add(it.base.id);
-    srsUpdate(it.base, true); G.cool.set(it.base.id, it.base.box >= 2 ? 9999 : 25); // 2-3 aciertos: al fondo de la fila
+    if (P(it.base, it.dir).seen === 0) G.newWords.add(it.base.id);
+    srsUpdate(it.base, it.dir, true); G.cool.set(ckey(it.base, it.dir), P(it.base, it.dir).box >= 2 ? 9999 : 25); // 2-3 aciertos: al fondo de la fila
   }
   updateHud(); micFlush();
 }
@@ -438,10 +452,10 @@ function miss(it) {
     if (db.settings.speak) speak(it.base.es);
     return surpriseCard(it.base);
   }
-  if (it.base.seen === 0) G.newWords.add(it.base.id);
-  srsUpdate(it.base, false);
+  if (P(it.base, it.dir).seen === 0) G.newWords.add(it.base.id);
+  srsUpdate(it.base, it.dir, false);
   G.missed.set(it.base.id, it.base);
-  scheduleRetry(it.base);
+  scheduleRetry(it.base, it.dir);
   reveal(it);
   if (db.settings.speak) speak(it.base.es);
   if (G.lives <= 0) endGame();
@@ -544,7 +558,7 @@ function renderPortal() {
     .map(t => `<option value="${esc(t)}">${esc(topicName(t))}</option>`).join('');
   const W = db.words;
   $('#portal-stats').innerHTML = isW
-    ? statBox(W.length, 'palabras') + statBox(W.filter(isMastered).length, 'dominadas') + statBox(W.filter(isHard).length, 'difíciles') + statBox(W.filter(w => w.regional).length, 'hondureñas')
+    ? statBox(W.length, 'palabras') + DIRS.map(d => statBox(W.filter(w => masteredIn(w, d)).length, 'dominadas ' + DIRNAME[d])).join('') + statBox(W.filter(isHard).length, 'difíciles') + statBox(W.filter(w => w.regional).length, 'hondureñas')
     : statBox(db.surprise.length, 'en el banco') + statBox(surpriseAvail().length, 'aún no en su lista');
   renderTable();
 }
@@ -563,8 +577,8 @@ function renderTable() {
   $('#tbl').innerHTML = `<tr>${head}</tr>` + rows.map(w => {
     const acts = `<td><button data-a="say" data-id="${w.id}">🔊</button> <button data-a="edit" data-id="${w.id}">✏️</button> <button data-a="del" data-id="${w.id}">🗑</button></td>`;
     if (kind === 'surprise') return `<tr><td>${esc(w.es)}</td><td>${esc(w.en)}</td><td>${esc(w.ex)}</td>${acts}</tr>`;
-    const tags = (w.regional ? '<span class="tag">hondureña</span>' : '') + (isHard(w) ? '<span class="tag hard">difícil</span>' : '') + (isMastered(w) ? '<span class="tag ok">dominada</span>' : '');
-    return `<tr><td>${esc(w.es)}</td><td>${esc(w.en)}</td><td>${esc(topicName(w.topic))}</td><td>${tags}<span class="muted">${w.ok}✓ ${w.bad}✗</span></td>${acts}</tr>`;
+    const tags = (w.regional ? '<span class="tag">hondureña</span>' : '') + (isHard(w) ? '<span class="tag hard">difícil</span>' : '') + (isMastered(w) ? '<span class="tag ok">dominada</span>' : DIRS.map(d => masteredIn(w, d) ? `<span class="tag ok">dominada ${DIRNAME[d]}</span>` : '').join(''));
+    return `<tr><td>${esc(w.es)}</td><td>${esc(w.en)}</td><td>${esc(topicName(w.topic))}</td><td>${tags}<span class="muted">${DIRS.map(d => `${DIRNAME[d]} ${P(w, d).ok}✓ ${P(w, d).bad}✗`).join(' · ')}</span></td>${acts}</tr>`;
   }).join('');
 }
 ['#q', '#q-topic', '#q-filter'].forEach(s => $(s).oninput = renderTable);
@@ -643,7 +657,7 @@ $('#file-import').onchange = async e => {
 };
 $('#btn-reset-progress').onclick = () => {
   if (!confirm('¿Reiniciar el progreso de todas las palabras?')) return;
-  db.words.forEach(w => Object.assign(w, { box: 0, due: 0, seen: 0, ok: 0, bad: 0 })); db.stats.sessions = []; save();
+  db.words.forEach(w => { w.p = freshP(); }); db.stats.sessions = []; save();
 };
 $('#btn-reset-all').onclick = () => {
   if (!confirm('Se borrará todo y volverá el vocabulario inicial. ¿Continuar?')) return;
